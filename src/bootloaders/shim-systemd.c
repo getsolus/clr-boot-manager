@@ -37,7 +37,7 @@
  *
  *          KERNEL_NAMESPACE/
  *              bootloaderx64.efi       <-- shim
- *              loaderx64.efi           <-- systemd-boot bootloader
+ *              grubx64.efi             <-- systemd-boot bootloader (The pre-signed shim is hardcoded to boot grubx64.efi)
  *              mmx64.efi               <-- MOK manager
  *              fbx64.efi               <-- fallback bootloader
  *
@@ -124,7 +124,7 @@ __cbm_export__ const BootLoader
 
 /* these path components can be used as-is, no need to probe */
 #define SHIM_DST "bootloader" EFI_SUFFIX
-#define SYSTEMD_DST "loader" EFI_SUFFIX
+#define SYSTEMD_DST "grub" EFI_SUFFIX
 #define SYSTEMD_CONFIG_DIR "loader"
 #define SYSTEMD_ENTRIES_DIR "entries"
 
