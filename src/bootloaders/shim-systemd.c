@@ -114,6 +114,9 @@ __cbm_export__ const BootLoader
         "/"                                                                                        \
         "systemd-boot" EFI_SUFFIX
 
+#define VENDOR_MOK "usr/lib/systemd/boot/solus-mok.cer"
+#define MOK_DST "solus-enroll-me.cer"
+
 /* these three path components needs to be probed. they are used to copy files
  * onto ESP which uses FAT. on actual FAT, use of ALL CAPS is enough to
  * construct usable EFI paths. however, probing is needed to comply with the
@@ -147,6 +150,11 @@ typedef struct shim_systemd_config {
          * to coincide with actual casing on ESP. */
         char *bin_dst_host;
         char *efi_dst_host;
+
+        /* Location of the vendor's machine owner's key in DER format */
+        char *vendor_mok;
+        char *mok_dst;
+
 } shim_systemd_config_t;
 
 static shim_systemd_config_t config = { .has_boot_rec = -1 };
@@ -202,6 +210,9 @@ static bool shim_systemd_needs_install(__cbm_unused__ const BootManager *manager
         if (!exists_identical(config.systemd_dst_host, NULL)) {
                 return true;
         }
+        if (!exists_identical(config.mok_dst, NULL)) {
+                return true;
+        }
         return !config.has_boot_rec;
 }
 
@@ -219,6 +230,9 @@ static bool shim_systemd_needs_update(__cbm_unused__ const BootManager *manager)
                 return true;
         }
         if (!exists_identical(config.systemd_dst_host, config.systemd_src)) {
+                return true;
+        }
+        if (!exists_identical(config.mok_dst, config.vendor_mok)) {
                 return true;
         }
         return !config.has_boot_rec;
@@ -275,6 +289,11 @@ static bool shim_systemd_install(const BootManager *manager)
         }
         if (!copy_file_atomic(config.systemd_src, config.systemd_dst_host, 00644)) {
                 LOG_FATAL("Cannot copy %s to %s", config.systemd_src, config.systemd_dst_host);
+                return false;
+        }
+
+        if (!copy_file_atomic(config.vendor_mok, config.mok_dst, 00644)) {
+                LOG_FATAL("Cannot copy %s to %s", config.vendor_mok, config.mok_dst);
                 return false;
         }
 
@@ -360,6 +379,9 @@ static bool shim_systemd_init(const BootManager *manager)
         config.efi_fallback_dst_host =
             nc_build_case_correct_path(config.efi_fallback_dir, EFI_FALLBACK, NULL);
 
+        config.vendor_mok = string_printf("%s/%s", prefix, VENDOR_MOK);
+        config.mok_dst = nc_build_case_correct_path(boot_root, MOK_DST, NULL);
+
         return true;
 }
 
@@ -375,6 +397,8 @@ static void shim_systemd_destroy(const BootManager *manager)
         free(config.bin_dst_host);
         free(config.bin_dst_esp);
         free(config.efi_dst_host);
+        free(config.vendor_mok);
+        free(config.mok_dst);
         if (!config.is_image_mode && boot_manager_is_update_efi_vars((BootManager *)manager)) {
                 bootvar_destroy();
         }
