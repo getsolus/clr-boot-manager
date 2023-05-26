@@ -347,7 +347,7 @@ static bool shim_systemd_init(const BootManager *manager)
 
         if (!boot_manager_is_image_mode((BootManager *)manager)) {
                 if (bootvar_init()) {
-                        return false;
+                        LOG_ERROR("Cannot parse EFI variables");
                 }
                 config.is_image_mode = 0;
         } else {
