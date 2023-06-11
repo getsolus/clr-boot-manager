@@ -32,14 +32,14 @@
  *
  *     /EFI/
  *          Boot/
- *              BOOTX64.EFI         <-- the fallback bootloader only modified if
- *                                      image is being created
+ *              BOOTX64.EFI             <-- shim
+ *              fbx64.efi               <-- fallback bootloader https://github.com/rhboot/shim/blob/main/README.fallback
  *
  *          KERNEL_NAMESPACE/
+ *              BOOTX64.CSV             <-- fallback bootloader will read this file to create a uefi entry (for buggy uefi firmware / no efivars)
  *              bootloaderx64.efi       <-- shim
- *              loaderx64.efi           <-- systemd-boot bootloader
+ *              grubx64.efi             <-- systemd-boot bootloader (The pre-signed shim is hardcoded to boot grubx64.efi)
  *              mmx64.efi               <-- MOK manager
- *              fbx64.efi               <-- fallback bootloader
  *
  *              kernel-KERNEL_NAMESPACE... <-- kernels
  *              initrd-KERNEL_NAMESPACE... <-- initrds
@@ -55,6 +55,12 @@
  * bootable image is being created. This is a fallback scheme: using only
  * systemd as the last resort to boot. When the system is being updated, an EFI
  * boot entry is created (BootXXXX EFI variable) if it does not exist already.
+ *
+ * Layout for image mode (FIXME: convert this to shim as well)
+ *  *     /EFI/
+ *          Boot/
+ *              BOOTX64.EFI         <-- the fallback bootloader only modified if
+ *                                      image is being created
  */
 
 static const char *shim_systemd_get_kernel_destination(const BootManager *);
@@ -108,11 +114,20 @@ __cbm_export__ const BootLoader
         SHIM_SRC_DIR                                                                               \
         "/"                                                                                        \
         "fb" EFI_SUFFIX
+/* FIXME: Stop hardcoding, make configurable from meson */
+#define BOOTCSV_SRC                                                                                \
+        SHIM_SRC_DIR                                                                               \
+        "/"                                                                                        \
+        "BOOTX64.CSV"
 #define SYSTEMD_SRC_DIR "usr/lib/systemd/boot/efi"
 #define SYSTEMD_SRC                                                                                \
         SYSTEMD_SRC_DIR                                                                            \
         "/"                                                                                        \
         "systemd-boot" EFI_SUFFIX
+
+/* FIXME: Stop hardcoding these, make configurable from meson */
+#define VENDOR_MOK "usr/lib/systemd/boot/solus-mok.cer"
+#define MOK_DST "solus-enroll-me.cer"
 
 /* these three path components needs to be probed. they are used to copy files
  * onto ESP which uses FAT. on actual FAT, use of ALL CAPS is enough to
@@ -124,15 +139,22 @@ __cbm_export__ const BootLoader
 
 /* these path components can be used as-is, no need to probe */
 #define SHIM_DST "bootloader" EFI_SUFFIX
-#define SYSTEMD_DST "loader" EFI_SUFFIX
+#define MM_DST "mm" EFI_SUFFIX
+#define FB_DST "fb" EFI_SUFFIX
+#define BOOTCSV_DST "BOOTX64.CSV"
+#define SYSTEMD_DST "grub" EFI_SUFFIX
 #define SYSTEMD_CONFIG_DIR "loader"
 #define SYSTEMD_ENTRIES_DIR "entries"
 
 typedef struct shim_systemd_config {
         char *shim_src;
+        char *mm_src;
+        char *fb_src;
         char *systemd_src;
 
         char *shim_dst_host; /* as accessible by the CMB for file ops. */
+        char *mm_dst_host;
+        char *fb_dst_host;
         char *systemd_dst_host;
 
         char *shim_dst_esp; /* absolute location of shim on the ESP, for boot record */
@@ -147,6 +169,15 @@ typedef struct shim_systemd_config {
          * to coincide with actual casing on ESP. */
         char *bin_dst_host;
         char *efi_dst_host;
+
+        /* Location of the vendor's machine owner's key in DER format */
+        char *vendor_mok;
+        char *mok_dst;
+
+        /* Location of the vendor's UCS-2 LE formatted BOOT.CSV file */
+        char *bootcsv_src;
+        char *bootcsv_dst_host;
+
 } shim_systemd_config_t;
 
 static shim_systemd_config_t config = { .has_boot_rec = -1 };
@@ -196,10 +227,25 @@ static bool shim_systemd_needs_install(__cbm_unused__ const BootManager *manager
                         config.has_boot_rec = 1;
                 }
         }
+        if (!exists_identical(config.efi_fallback_dst_host, NULL)) {
+                return true;
+        }
+        if (!exists_identical(config.fb_dst_host, NULL)) {
+                return true;
+        }
         if (!exists_identical(config.shim_dst_host, NULL)) {
                 return true;
         }
+        if (!exists_identical(config.mm_dst_host, NULL)) {
+                return true;
+        }
         if (!exists_identical(config.systemd_dst_host, NULL)) {
+                return true;
+        }
+        if (!exists_identical(config.mok_dst, NULL)) {
+                return true;
+        }
+        if (!exists_identical(config.bootcsv_dst_host, NULL)) {
                 return true;
         }
         return !config.has_boot_rec;
@@ -215,10 +261,25 @@ static bool shim_systemd_needs_update(__cbm_unused__ const BootManager *manager)
                         config.has_boot_rec = 1;
                 }
         }
+        if (!exists_identical(config.efi_fallback_dst_host, config.shim_src)) {
+                return true;
+        }
+        if (!exists_identical(config.fb_dst_host, config.fb_src)) {
+                return true;
+        }
         if (!exists_identical(config.shim_dst_host, config.shim_src)) {
                 return true;
         }
+        if (!exists_identical(config.mm_dst_host, config.mm_src)) {
+                return true;
+        }
         if (!exists_identical(config.systemd_dst_host, config.systemd_src)) {
+                return true;
+        }
+        if (!exists_identical(config.mok_dst, config.vendor_mok)) {
+                return true;
+        }
+        if (!exists_identical(config.bootcsv_dst_host, config.bootcsv_src)) {
                 return true;
         }
         return !config.has_boot_rec;
@@ -238,12 +299,9 @@ static bool make_layout(const BootManager *manager)
         if (!nc_mkdir_p(systemd_config_entries, 00755)) {
                 return false;
         }
-        /* in case of image creation, override the fallback bootloader, so the
-         * media will be bootable. */
-        if (config.is_image_mode) {
-                if (!nc_mkdir_p(config.efi_fallback_dir, 00755)) {
-                        return false;
-                }
+
+        if (!nc_mkdir_p(config.efi_fallback_dir, 00755)) {
+                return false;
         }
         return true;
 }
@@ -263,14 +321,28 @@ static bool shim_systemd_install_fallback_bootloader(__cbm_unused__ const BootMa
 static bool shim_systemd_install(const BootManager *manager)
 {
         char varname[9];
+        const char *prefix = NULL;
+        prefix = boot_manager_get_vendor_prefix((BootManager *)manager);
 
         if (!make_layout(manager)) {
                 LOG_FATAL("Cannot create layout");
                 return false;
         }
 
+        if (!copy_file_atomic(config.shim_src, config.efi_fallback_dst_host, 00644)) {
+                LOG_FATAL("Cannot copy %s to %s", config.shim_src, config.efi_fallback_dst_host);
+                return false;
+        }
+        if (!copy_file_atomic(config.fb_src, config.fb_dst_host, 00644)) {
+                LOG_FATAL("Cannot copy %s to %s", config.fb_src, config.fb_dst_host);
+                return false;
+        }
         if (!copy_file_atomic(config.shim_src, config.shim_dst_host, 00644)) {
                 LOG_FATAL("Cannot copy %s to %s", config.shim_src, config.shim_dst_host);
+                return false;
+        }
+        if (!copy_file_atomic(config.mm_src, config.mm_dst_host, 00644)) {
+                LOG_FATAL("Cannot copy %s to %s", config.mm_src, config.mm_dst_host);
                 return false;
         }
         if (!copy_file_atomic(config.systemd_src, config.systemd_dst_host, 00644)) {
@@ -278,11 +350,20 @@ static bool shim_systemd_install(const BootManager *manager)
                 return false;
         }
 
+        if (!copy_file_atomic(config.vendor_mok, config.mok_dst, 00644)) {
+                LOG_FATAL("Cannot copy %s to %s", config.vendor_mok, config.mok_dst);
+                return false;
+        }
+        if (!copy_file_atomic(config.bootcsv_src, config.bootcsv_dst_host, 00644)) {
+                LOG_FATAL("Cannot copy %s to %s", config.bootcsv_src, config.bootcsv_dst_host);
+                return false;
+        }
+
         if (!config.is_image_mode) {
                 if (!config.has_boot_rec && boot_manager_is_update_efi_vars((BootManager *)manager)) {
                         if (bootvar_create(BOOT_DIRECTORY, config.shim_dst_esp, varname, 9)) {
                                 LOG_ERROR("Cannot create EFI variable (boot entry)");
-                                LOG_ERROR("Please manually update your bios to add a boot entry for Clear Linux");
+                                LOG_ERROR("Please manually update your bios to add a boot entry for %s", prefix);
                         }
                 }
         } else {
@@ -315,7 +396,7 @@ static bool shim_systemd_init(const BootManager *manager)
 
         if (!boot_manager_is_image_mode((BootManager *)manager)) {
                 if (bootvar_init()) {
-                        return false;
+                        LOG_ERROR("Cannot parse EFI variables");
                 }
                 config.is_image_mode = 0;
         } else {
@@ -338,6 +419,8 @@ static bool shim_systemd_init(const BootManager *manager)
                 prefix[len - 1] = '\0';
         }
         config.shim_src = string_printf("%s/%s", prefix, SHIM_SRC);
+        config.mm_src = string_printf("%s/%s", prefix, MM_SRC);
+        config.fb_src = string_printf("%s/%s", prefix, FB_SRC);
         config.systemd_src = string_printf("%s/%s", prefix, SYSTEMD_SRC);
 
         boot_root = boot_manager_get_boot_dir((BootManager *)manager);
@@ -349,6 +432,7 @@ static bool shim_systemd_init(const BootManager *manager)
         config.bin_dst_esp = strdup(config.bin_dst_host + strlen(boot_root));
 
         config.shim_dst_host = nc_build_case_correct_path(config.bin_dst_host, SHIM_DST, NULL);
+        config.mm_dst_host = nc_build_case_correct_path(config.bin_dst_host, MM_DST, NULL);
         config.systemd_dst_host =
             nc_build_case_correct_path(config.bin_dst_host, SYSTEMD_DST, NULL);
 
@@ -360,14 +444,26 @@ static bool shim_systemd_init(const BootManager *manager)
         config.efi_fallback_dst_host =
             nc_build_case_correct_path(config.efi_fallback_dir, EFI_FALLBACK, NULL);
 
+        config.fb_dst_host = nc_build_case_correct_path(config.efi_fallback_dir, FB_DST, NULL);
+
+        config.vendor_mok = string_printf("%s/%s", prefix, VENDOR_MOK);
+        config.mok_dst = nc_build_case_correct_path(boot_root, MOK_DST, NULL);
+
+        config.bootcsv_src = string_printf("%s/%s", prefix, BOOTCSV_SRC);
+        config.bootcsv_dst_host = nc_build_case_correct_path(config.bin_dst_host, BOOTCSV_DST, NULL);
+
         return true;
 }
 
 static void shim_systemd_destroy(const BootManager *manager)
 {
         free(config.shim_src);
+        free(config.mm_src);
+        free(config.fb_src);
         free(config.systemd_src);
         free(config.shim_dst_host);
+        free(config.mm_dst_host);
+        free(config.fb_dst_host);
         free(config.systemd_dst_host);
         free(config.shim_dst_esp);
         free(config.efi_fallback_dir);
@@ -375,6 +471,10 @@ static void shim_systemd_destroy(const BootManager *manager)
         free(config.bin_dst_host);
         free(config.bin_dst_esp);
         free(config.efi_dst_host);
+        free(config.vendor_mok);
+        free(config.mok_dst);
+        free(config.bootcsv_src);
+        free(config.bootcsv_dst_host);
         if (!config.is_image_mode && boot_manager_is_update_efi_vars((BootManager *)manager)) {
                 bootvar_destroy();
         }

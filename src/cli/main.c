@@ -22,6 +22,7 @@
 #include "ops/timeout.h"
 #include "ops/update.h"
 #include "ops/kernels.h"
+#include "ops/mount.h"
 
 static SubCommand cmd_update;
 static SubCommand cmd_help;
@@ -32,6 +33,7 @@ static SubCommand cmd_report_booted;
 static SubCommand cmd_list_kernels;
 static SubCommand cmd_set_kernel;
 static SubCommand cmd_remove_kernel;
+static SubCommand cmd_mount_boot;
 static char *binary_name = NULL;
 static NcHashmap *g_commands = NULL;
 static bool explicit_help = false;
@@ -158,7 +160,7 @@ This integer value will be used when next configuring the bootloader, and is use
 to forcibly delay the system boot for a specified number of seconds.",
                 .callback = cbm_command_get_timeout,
                 .usage = " [--path=/path/to/filesystem/root]",
-                .requires_root = false,
+                .requires_root = true,
         };
 
         if (!nc_hashmap_put(commands, cmd_get_timeout.name, &cmd_get_timeout)) {
@@ -221,6 +223,21 @@ kernel for the next time the system boots.",
         };
 
         if (!nc_hashmap_put(commands, cmd_remove_kernel.name, &cmd_remove_kernel)) {
+                DECLARE_OOM();
+                return EXIT_FAILURE;
+        }
+
+        /* Mount the boot directory */
+        cmd_mount_boot = (SubCommand){
+            .name = "mount-boot",
+            .blurb = "Mount the boot directory",
+            .help = "This command ensures the boot directory is mounted.",
+            .callback = cbm_command_mount_boot,
+            .usage = " [--path=/path/to/filesystem/root]",
+            .requires_root = true
+        };
+
+        if (!nc_hashmap_put(commands, cmd_mount_boot.name, &cmd_mount_boot)) {
                 DECLARE_OOM();
                 return EXIT_FAILURE;
         }
