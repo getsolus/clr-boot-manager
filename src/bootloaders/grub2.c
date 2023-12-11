@@ -174,11 +174,21 @@ bool grub2_write_kernel(const Grub2Config *config, const Kernel *kernel)
         const char *tab = config->submenu ? "\t\t" : "\t";
         const char *root_tab = config->submenu ? "\t" : "";
         NcHashmapIter iter = { 0 };
+        char *boot_prefix = NULL;
         char *initrd_name = NULL;
         char *ucode_initrd = NULL;
         autofree(char) *initrd_paths = NULL;
         initrd_paths = malloc(1);
         initrd_paths[0] = '\0';
+
+        /* If /boot is on a BTRFS subvolume, Grub will fail to find it without
+         * the subvolume prefix being at the start of the path
+         */
+        if (config->root_dev->btrfs_sub) {
+                boot_prefix = string_printf("/%s/%s", config->root_dev->btrfs_sub, BOOT_DIRECTORY);
+        } else {
+                boot_prefix = BOOT_DIRECTORY;
+        }
 
         /* Write the start of the entry
          * e.g. menuentry 'Some Linux OS (4.4.9-12.lts)' --class some-linux-os --class gnu-linux
@@ -231,7 +241,7 @@ bool grub2_write_kernel(const Grub2Config *config, const Kernel *kernel)
                 cbm_writer_append_printf(config->writer,
                                          "echo \"%slinux %s/%s root=UUID=%s ",
                                          tab,
-                                         BOOT_DIRECTORY, /* i.e. /boot */
+                                         boot_prefix, /* i.e. /boot */
                                          kernel->target.legacy_path,
                                          config->root_dev->uuid);
         }
@@ -256,7 +266,7 @@ bool grub2_write_kernel(const Grub2Config *config, const Kernel *kernel)
                 char *tmp = initrd_paths;
                 initrd_paths = string_printf("%s %s/%s",
                                          initrd_paths,
-                                         (!config->is_separate) ? BOOT_DIRECTORY : "", /* i.e. /boot */
+                                         (!config->is_separate) ? boot_prefix : "", /* i.e. /boot */
                                          ucode_initrd);
                 free(tmp);
         }
@@ -266,7 +276,7 @@ bool grub2_write_kernel(const Grub2Config *config, const Kernel *kernel)
                 char *tmp = initrd_paths;
                 initrd_paths = string_printf("%s %s/%s",
                                          initrd_paths,
-                                         (!config->is_separate) ? BOOT_DIRECTORY : "", /* i.e. /boot */
+                                         (!config->is_separate) ? boot_prefix : "", /* i.e. /boot */
                                          kernel->target.initrd_path);
                 free(tmp);
         }
@@ -280,7 +290,7 @@ bool grub2_write_kernel(const Grub2Config *config, const Kernel *kernel)
                 }
                 initrd_paths = string_printf("%s %s/%s",
                                          initrd_paths,
-                                         (!config->is_separate) ? BOOT_DIRECTORY : "", /* i.e. /boot */
+                                         (!config->is_separate) ? boot_prefix : "", /* i.e. /boot */
                                          initrd_name);
                 free(tmp);
         }
