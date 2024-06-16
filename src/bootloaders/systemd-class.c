@@ -15,6 +15,7 @@
 #include <string.h>
 #include <sys/stat.h>
 #include <unistd.h>
+#include <glob.h>
 
 #include "bootloader.h"
 #include "bootman.h"
@@ -207,6 +208,27 @@ static bool sd_class_ensure_dirs(void)
         return true;
 }
 
+bool _append_extra_initrds(const BootManager *manager, CbmWriter *writer, const char *initrd_target) {
+        autofree(char) *initrd_glob = string_printf("%s.*", initrd_target);
+        glob_t files;
+
+        int res = glob(initrd_glob, 0, NULL, &files);
+        bool ret = (res == GLOB_NOMATCH);
+        if (res == 0) {
+                for(size_t i = 0; i < files.gl_pathc; i++) {
+                        LOG_DEBUG("adding extra initrd to bootloader: %s", basename(files.gl_pathv[i]));
+
+                        cbm_writer_append_printf(writer,
+                                                 "initrd %s/%s\n",
+                                                 get_kernel_destination_impl(manager),
+                                                 basename(files.gl_pathv[i]));
+                }
+        }
+
+        globfree(&files);
+        return ret;
+}
+
 bool sd_class_install_kernel(const BootManager *manager, const Kernel *kernel)
 {
         if (!manager || !kernel) {
@@ -260,6 +282,9 @@ bool sd_class_install_kernel(const BootManager *manager, const Kernel *kernel)
                                          get_kernel_destination_impl(manager),
                                          kernel->target.initrd_path);
         }
+
+        /* Extra initrds */
+        _append_extra_initrds(manager, writer, kernel->source.initrd_file);
 
         boot_manager_initrd_iterator_init(manager, &iter);
         while (boot_manager_initrd_iterator_next(&iter, &initrd_name)) {

@@ -17,6 +17,7 @@
 #include <fcntl.h>
 #include <limits.h>
 #include <unistd.h>
+#include <glob.h>
 
 #include "bootman.h"
 #include "bootman_private.h"
@@ -608,6 +609,37 @@ static bool boot_manager_remove_legacy_uefi_kernel(const BootManager *manager, c
         return ret;
 }
 
+bool _copy_glob_result(const glob_t files, const char *target_dir) {
+        for(size_t i = 0; i < files.gl_pathc; i++) {
+                char *initrd_source = files.gl_pathv[i];
+                autofree(char) *initrd_target = string_printf("%s/%s", target_dir, basename(files.gl_pathv[i]));
+
+                LOG_DEBUG("installing extra initrd: %s", files.gl_pathv[i]);
+
+                if (!cbm_files_match(initrd_source, initrd_target)) {
+                        if (!copy_file_atomic(initrd_source, initrd_target, 00644)) {
+                                return false;
+                        }
+                }
+        }
+
+        return true;
+}
+
+bool _copy_extra_initrds(const char *initrd_base, const char *target_dir) {
+        autofree(char) *initrd_glob = string_printf("%s.*", initrd_base);
+        glob_t files;
+
+        int res = glob(initrd_glob, 0, NULL, &files);
+        bool ret = (res == GLOB_NOMATCH);
+        if (res == 0) {
+                ret = _copy_glob_result(files, target_dir);
+        }
+
+        globfree(&files);
+        return ret;
+}
+
 /**
  * Internal function to install the kernel blob itself
  */
@@ -616,6 +648,7 @@ bool boot_manager_install_kernel_internal(const BootManager *manager, const Kern
         autofree(char) *kfile_target = NULL;
         autofree(char) *base_path = NULL;
         autofree(char) *initrd_target = NULL;
+        autofree(char) *initrd_target_dir = NULL;
         const char *initrd_source = NULL;
         bool is_uefi = ((manager->bootloader->get_capabilities(manager) & BOOTLOADER_CAP_UEFI) ==
                         BOOTLOADER_CAP_UEFI);
@@ -658,10 +691,8 @@ bool boot_manager_install_kernel_internal(const BootManager *manager, const Kern
                 return true;
         }
 
-        initrd_target = string_printf("%s%s/%s",
-                                      base_path,
-                                      (is_uefi ? efi_boot_dir : ""),
-                                      kernel->target.initrd_path);
+        initrd_target_dir = string_printf("%s%s", base_path, (is_uefi ? efi_boot_dir : ""));
+        initrd_target = string_printf("%s/%s", initrd_target_dir, kernel->target.initrd_path);
 
         if (!cbm_files_match(initrd_source, initrd_target)) {
                 if (!copy_file_atomic(initrd_source, initrd_target, 00644)) {
@@ -670,6 +701,13 @@ bool boot_manager_install_kernel_internal(const BootManager *manager, const Kern
                                   strerror(errno));
                         return false;
                 }
+        }
+
+        if (!_copy_extra_initrds(initrd_source, initrd_target_dir)) {
+                LOG_FATAL("Failed to install extra initrds %s: %s",
+                          initrd_source,
+                          strerror(errno));
+                return false;
         }
 
         /* Our portion is complete, remove any legacy uefi bits we might have
@@ -682,6 +720,34 @@ bool boot_manager_install_kernel_internal(const BootManager *manager, const Kern
         }
 
         return true;
+}
+
+bool _remove_glob_result(const glob_t files) {
+        bool ret = true;
+
+        for(size_t i = 0; i < files.gl_pathc; i++) {
+                LOG_DEBUG("removing extra initrd: %s", files.gl_pathv[i]);
+
+                if (unlink(files.gl_pathv[i]) < 0) {
+                        ret = false;
+                }
+        }
+
+        return ret;
+}
+
+bool _remove_extra_initrds(const char *initrd_base) {
+        autofree(char) *initrd_glob = string_printf("%s.*", initrd_base);
+        glob_t files;
+
+        int res = glob(initrd_glob, 0, NULL, &files);
+        bool ret = (res == GLOB_NOMATCH);
+        if (res == 0) {
+                ret = _remove_glob_result(files);
+        }
+
+        globfree(&files);
+        return ret;
 }
 
 /**
@@ -799,6 +865,20 @@ bool boot_manager_remove_kernel_internal(const BootManager *manager, const Kerne
                                   initrd_target,
                                   strerror(errno));
                 }
+        }
+
+        /* Remove additional initrds */
+        if (!_remove_extra_initrds(kernel->source.initrd_file)) {
+                LOG_ERROR("Failed to remove extra initrds %s.*: %s",
+                          kernel->source.initrd_file,
+                          strerror(errno));
+                return false;
+        }
+        if (!_remove_extra_initrds(initrd_target)) {
+                LOG_ERROR("Failed to remove extra initrds %s.*: %s",
+                          initrd_target,
+                          strerror(errno));
+                return false;
         }
 
         /* Lastly, remove the source */
