@@ -2,6 +2,7 @@
  * This file is part of clr-boot-manager.
  *
  * Copyright © 2016-2018 Intel Corporation
+ * Copyright © 2024 Solus Project
  *
  * clr-boot-manager is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public License as
@@ -103,6 +104,11 @@ bool confirm_kernel_uninstalled(BootManager *manager, PlaygroundKernel *kernel);
  * Create boot_timeout.conf in /etc
  */
 bool create_timeout_conf(void);
+
+/**
+ * Create console_mode configuration in /etc
+ */
+bool create_console_mode_conf(void);
 
 /**
  * Set up the test harness to emulate UEFI
