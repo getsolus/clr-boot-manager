@@ -2,6 +2,7 @@
  * This file is part of clr-boot-manager.
  *
  * Copyright © 2016-2018 Intel Corporation
+ * Copyright © 2024 Solus Project
  *
  * clr-boot-manager is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public License as
@@ -326,6 +327,29 @@ START_TEST(bootman_timeout_test)
 }
 END_TEST
 
+START_TEST(bootman_console_mode_test)
+{
+        autofree(BootManager) *m = NULL;
+        m = prepare_playground(&core_config);
+
+        if (create_console_mode_conf()) {
+                fail_if(strcmp(boot_manager_get_console_mode(m), "max") != 0,
+                        "Failed to get console mode value.");
+        } else {
+                fprintf(stderr, "Couldn't create console mode conf\n");
+        }
+
+        fail_if(!boot_manager_set_console_mode(m, "auto"), "Failed to set console mode.");
+        fail_if(strcmp(boot_manager_get_console_mode(m), "auto") != 0,
+                "Failed to get correct console mode.");
+        fail_if(!boot_manager_set_console_mode(m, NULL), "Failed to disable console_mode.");
+        fail_if(nc_file_exists(TOP_BUILD_DIR "/tests/update_playground/" KERNEL_CONF_DIRECTORY
+                                             "/console_mode"),
+                "kernel/console_mode present.");
+        fail_if(boot_manager_get_console_mode(m) != NULL, "Failed to get default console mode.");
+}
+END_TEST
+
 START_TEST(bootman_writer_simple_test)
 {
         autofree(CbmWriter) *writer = CBM_WRITER_INIT;
@@ -406,6 +430,7 @@ static Suite *core_suite(void)
         tcase_add_test(tc, bootman_list_kernels_no_modules_test);
         tcase_add_test(tc, bootman_map_kernels_test);
         tcase_add_test(tc, bootman_timeout_test);
+        tcase_add_test(tc, bootman_console_mode_test);
         suite_add_tcase(s, tc);
 
         tc = tcase_create("bootman_writer_functions");

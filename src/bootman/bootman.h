@@ -2,6 +2,7 @@
  * This file is part of clr-boot-manager.
  *
  * Copyright © 2016-2018 Intel Corporation
+ * Copyright © 2024 Solus Project
  *
  * clr-boot-manager is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public License as
@@ -343,6 +344,20 @@ bool boot_manager_is_update_efi_vars(BootManager *self);
  * SYSCONFDIR/boot_timeout
  */
 int boot_manager_get_timeout_value(BootManager *manager);
+
+/**
+ * Determine the console mode based on the contents of
+ * SYSCONFDIR/console_mode
+ */
+char *boot_manager_get_console_mode(BootManager *manager);
+
+/**
+ * Determine the console mode based on the contents of
+ * SYSCONFDIR/console_mode
+ *
+ * @param mode console mode for systemd-boot. See `man loader.conf` for valid values
+ */
+bool boot_manager_set_console_mode(BootManager *manager, const char *mode);
 
 /**
  * Determine the default kernel for the given type if it is in the set
