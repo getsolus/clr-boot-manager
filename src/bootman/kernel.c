@@ -27,6 +27,30 @@
 
 #include "config.h"
 
+static inline const char *strip_leading_slashes(const char *path) {
+    for(size_t i = 0; i < strlen(path); i++) {
+        if (path[i] != '/') {
+            return path + i;
+        }
+    }
+
+    return path;
+}
+
+static inline bool is_usr(const char *path) {
+    return strncmp(strip_leading_slashes(path), "usr/", 4) == 0;
+}
+
+static inline const char* without_usr(const char *path) {
+    const char *p = strip_leading_slashes(path);
+
+    if(!is_usr(p)) {
+        return path;
+    }
+
+    return p + 3;
+}
+
 /**
  * Determine the applicable kboot file
  */
@@ -126,6 +150,15 @@ Kernel *boot_manager_inspect_kernel(BootManager *self, char *path)
                                    version,
                                    release,
                                    type);
+
+        /* Fallback to pre-usr merge */
+        if (is_usr(module_dir) && !nc_file_exists(module_dir) && nc_file_exists(without_usr(module_dir))) {
+            LOG_DEBUG("Falling back to pre-usr-merge module directory: %s", without_usr(module_dir));
+
+            char *tmp = strdup(without_usr(module_dir));
+            free(module_dir);
+            module_dir = tmp;
+        }
 
         /* Fallback to an older namespace */
         if (!nc_file_exists(module_dir)) {
@@ -731,9 +764,24 @@ bool boot_manager_remove_kernel_internal(const BootManager *manager, const Kerne
 
         /* Purge the kernel modules from disk */
         if (kernel->source.module_dir && nc_file_exists(kernel->source.module_dir)) {
+                LOG_DEBUG("Removing module dir: %s", kernel->source.module_dir);
+
                 if (!nc_rm_rf(kernel->source.module_dir)) {
                         LOG_ERROR("Failed to remove module dir (-rf) %s: %s",
                                   kernel->source.module_dir,
+                                  strerror(errno));
+                } else {
+                        cbm_sync();
+                }
+        }
+
+        /* Purge the pre-usr merged kernel modules/symlinks from disk */
+        if (kernel->source.module_dir && is_usr(kernel->source.module_dir) && nc_file_exists(without_usr(kernel->source.module_dir))) {
+                LOG_DEBUG("Removing pre-usr-merged module dir: %s", without_usr(kernel->source.module_dir));
+
+                if (!nc_rm_rf(without_usr(kernel->source.module_dir))) {
+                        LOG_ERROR("Failed to remove module dir (-rf) %s: %s",
+                                  without_usr(kernel->source.module_dir),
                                   strerror(errno));
                 } else {
                         cbm_sync();
