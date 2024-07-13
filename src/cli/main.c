@@ -2,6 +2,7 @@
  * This file is part of clr-boot-manager.
  *
  * Copyright © 2016-2018 Intel Corporation
+ * Copyright © 2024 Solus Project
  *
  * clr-boot-manager is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public License as
@@ -20,6 +21,7 @@
 
 #include "ops/report_booted.h"
 #include "ops/timeout.h"
+#include "ops/console_mode.h"
 #include "ops/update.h"
 #include "ops/kernels.h"
 #include "ops/mount.h"
@@ -29,6 +31,8 @@ static SubCommand cmd_help;
 static SubCommand cmd_version;
 static SubCommand cmd_set_timeout;
 static SubCommand cmd_get_timeout;
+static SubCommand cmd_set_console_mode;
+static SubCommand cmd_get_console_mode;
 static SubCommand cmd_report_booted;
 static SubCommand cmd_list_kernels;
 static SubCommand cmd_set_kernel;
@@ -71,7 +75,7 @@ static bool print_usage(int argc, char **argv)
 
         nc_hashmap_iter_init(g_commands, &iter);
         while (nc_hashmap_iter_next(&iter, (void **)&id, (void **)&command)) {
-                fprintf(stdout, "%15s - %s\n", id, command->blurb);
+                fprintf(stdout, "%16s - %s\n", id, command->blurb);
         }
 
         cli_print_default_args_help();
@@ -164,6 +168,46 @@ to forcibly delay the system boot for a specified number of seconds.",
         };
 
         if (!nc_hashmap_put(commands, cmd_get_timeout.name, &cmd_get_timeout)) {
+                DECLARE_OOM();
+                return EXIT_FAILURE;
+        }
+
+        /* Set the console mode */
+        cmd_set_console_mode = (SubCommand){
+                .name = "set-console-mode",
+                .blurb = "Set the console mode to be used by the bootloader",
+                .help = "Set the default console mode to be used by" PACKAGE_NAME
+                        " when using\n\
+the \"update\" command.\n\
+This value will be used when next configuring the bootloader, and is used\n\
+to configure the console mode.\n\
+See `console-mode` in `man loader.conf` for possible values.",
+                .callback = cbm_command_set_console_mode,
+                .usage = " [--path=/path/to/filesystem/root]",
+                .requires_root = true,
+        };
+
+        if (!nc_hashmap_put(commands, cmd_set_console_mode.name, &cmd_set_console_mode)) {
+                DECLARE_OOM();
+                return EXIT_FAILURE;
+        }
+
+        /* Get the console mode */
+        cmd_get_console_mode = (SubCommand){
+                .name = "get-console-mode",
+                .blurb = "Get the console mode to be used by the bootloader",
+                .help = "Get the default console mode to be used by" PACKAGE_NAME
+                        " when using\n\
+the \"update\" command.\n\
+This value will be used when next configuring the bootloader, and is used\n\
+to configure the console mode.\n\
+See `console-mode` in `man loader.conf` for possible values.",
+                .callback = cbm_command_get_console_mode,
+                .usage = " [--path=/path/to/filesystem/root]",
+                .requires_root = true,
+        };
+
+        if (!nc_hashmap_put(commands, cmd_get_console_mode.name, &cmd_get_console_mode)) {
                 DECLARE_OOM();
                 return EXIT_FAILURE;
         }

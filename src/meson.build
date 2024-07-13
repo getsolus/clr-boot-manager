@@ -40,7 +40,7 @@ libcbm_sources = [
     'bootman/bootman.c',
     'bootman/kernel.c',
     'bootman/sysconfig.c',
-    'bootman/timeout.c',
+    'bootman/config.c',
     'bootman/update.c',
     'lib/blkid_stub.c',
     'lib/cmdline.c',
@@ -102,6 +102,7 @@ clr_boot_manager_sources = [
     'cli/ops/mount.c',
     'cli/ops/report_booted.c',
     'cli/ops/timeout.c',
+    'cli/ops/console_mode.c',
     'cli/ops/update.c',
 ]
 
