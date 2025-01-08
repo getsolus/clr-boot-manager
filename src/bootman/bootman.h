@@ -217,6 +217,13 @@ const char *boot_manager_get_os_name(BootManager *manager);
 const char *boot_manager_get_os_id(BootManager *self);
 
 /**
+ * Return a value from the VC Keyamp.
+ *
+ * @note This string is owned by BootManager, do not modify or free
+ */
+const char *boot_manager_get_vconsole(BootManager *self, const char *key);
+
+/**
  * Discover a list of known kernels
  *
  * @return a newly allocated NcArray of Kernel's

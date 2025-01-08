@@ -117,6 +117,10 @@ void boot_manager_free(BootManager *self)
                 cbm_os_release_free(self->os_release);
         }
 
+        if (self->vconsole) {
+                nc_hashmap_free(self->vconsole);
+        }
+
         cbm_free_sysconfig(self->sysconfig);
         free(self->kernel_dir);
         free(self->initrd_freestanding_dir);
@@ -168,6 +172,19 @@ static bool boot_manager_select_bootloader(BootManager *self)
         return true;
 }
 
+static NcHashmap *boot_manager_parse_vconsole(const char *root) {
+        autofree(char) *path = string_printf("%s/etc/vconsole.conf", root);
+
+        if (!nc_file_exists(path)) {
+                LOG_DEBUG("No console configuration in %s", path);
+                return nc_hashmap_new_full(nc_string_hash, nc_string_compare, free, free);
+        }
+
+        /* Use the OS-release parsing, as that's compatible */
+        LOG_DEBUG("Loading vconsole.conf from %s", path);
+        return cbm_os_release_new(path);
+}
+
 bool boot_manager_set_prefix(BootManager *self, char *prefix)
 {
         assert(self != NULL);
@@ -186,6 +203,7 @@ bool boot_manager_set_prefix(BootManager *self, char *prefix)
         CHECK_DBG_RET_VAL(!config, false, "Could not inspect root");
 
         self->sysconfig = config;
+        self->vconsole = boot_manager_parse_vconsole(prefix);
 
         if (self->kernel_dir) {
                 free(self->kernel_dir);
@@ -283,6 +301,14 @@ const char *boot_manager_get_os_id(BootManager *self)
         assert(self->os_release != NULL);
 
         return cbm_os_release_get_value(self->os_release, OS_RELEASE_ID);
+}
+
+const char *boot_manager_get_vconsole(BootManager *self, const char *key)
+{
+        assert(self != NULL);
+        assert(self->vconsole != NULL);
+
+        return nc_hashmap_get(self->vconsole, key);
 }
 
 const CbmDeviceProbe *boot_manager_get_root_device(BootManager *self)

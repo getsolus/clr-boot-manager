@@ -28,6 +28,7 @@ struct BootManager {
         char *kernel_dir;              /**<Kernel directory */
         const BootLoader *bootloader;  /**<Selected bootloader */
         CbmOsRelease *os_release;      /**<Parsed os-release file */
+        NcHashmap *vconsole;           /**<Parsed /etc/vconsole.conf */
         char *abs_bootdir;             /**<Real boot dir */
         SystemKernel sys_kernel;       /**<Native kernel info, if any */
         bool have_sys_kernel;          /**<Whether sys_kernel is set */
