@@ -326,6 +326,8 @@ bool boot_manager_remove_kernel_wrapper(BootManager *self, const Kernel *kernel)
         CHECK_DBG_RET_VAL(!cbm_is_sysconfig_sane(self->sysconfig), false,
                           "Sysconfig is not sane");
 
+        CHECK_ERR_RET_VAL(!kernel, false, "No kernel specified, bailing");
+
         /* Grab the available kernels */
         kernels = boot_manager_get_kernels(self);
         CHECK_ERR_RET_VAL(!kernels || kernels->len == 0, false,
@@ -885,7 +887,7 @@ static bool _boot_manager_enumerate_initrds_freestanding(BootManager *self, cons
 
                 /* Check whether this is a microcode cpio (*-ucode.cpio) */
                 size_t nlen = strlen(ucode_needle);
-                size_t hlen = strlen(initrd_name_val);
+                size_t hlen = initrd_name_val ? strlen(initrd_name_val) : 0;
                 if (hlen > nlen) {
                         /* Ensure the match is at the end of the string */
                         const char *ext = &initrd_name_val[hlen-nlen];
