@@ -237,6 +237,8 @@ bool sd_class_install_kernel(const BootManager *manager, const Kernel *kernel)
         autofree(char) *conf_path = NULL;
         const CbmDeviceProbe *root_dev = NULL;
         const char *os_name = NULL;
+        const char *vc_keymap = NULL;
+        const char *vc_font = NULL;
         autofree(char) *old_conf = NULL;
         autofree(CbmWriter) *writer = CBM_WRITER_INIT;
         NcHashmapIter iter = { 0 };
@@ -258,6 +260,8 @@ bool sd_class_install_kernel(const BootManager *manager, const Kernel *kernel)
         }
 
         os_name = boot_manager_get_os_name((BootManager *)manager);
+        vc_keymap = boot_manager_get_vconsole((BootManager *)manager, "KEYMAP");
+        vc_font = boot_manager_get_vconsole((BootManager *)manager, "FONT");
 
         /* Standard title + linux lines */
         cbm_writer_append_printf(writer, "title %s\n", os_name);
@@ -312,6 +316,13 @@ bool sd_class_install_kernel(const BootManager *manager, const Kernel *kernel)
         /* Add Btrfs information if relevant */
         if (root_dev->btrfs_sub) {
                 cbm_writer_append_printf(writer, "rootflags=subvol=%s ", root_dev->btrfs_sub);
+        }
+        /* Add VC settings if configured */
+        if (vc_keymap) {
+                cbm_writer_append_printf(writer, "rd.vconsole.keymap=%s ", vc_keymap);
+        }
+        if (vc_font) {
+                cbm_writer_append_printf(writer, "rd.vconsole.font=%s ", vc_font);
         }
 
         /* Finish it off with the command line options */

@@ -41,6 +41,8 @@ typedef struct Grub2Config {
         char *boot_dir;
         const char *os_name;
         const char *os_id;
+        const char *vc_keymap;
+        const char *vc_font;
         bool is_separate;
         bool submenu;
         const BootManager *manager;
@@ -256,6 +258,16 @@ bool grub2_write_kernel(const Grub2Config *config, const Kernel *kernel)
                                          "rootflags=subvol=%s ",
                                          config->root_dev->btrfs_sub);
         }
+        if (config->vc_keymap) {
+                cbm_writer_append_printf(config->writer,
+                                         "rd.vconsole.keymap=%s ",
+                                         config->vc_keymap);
+        }
+        if (config->vc_font) {
+                cbm_writer_append_printf(config->writer,
+                                         "rd.vconsole.font=%s ",
+                                         config->vc_font);
+        }
 
         /* Finish it off with the command line options */
         cbm_writer_append_printf(config->writer, "%s\"\n", kernel->meta.cmdline);
@@ -322,6 +334,8 @@ static bool grub2_write_config(const BootManager *manager, const Kernel *default
         const CbmDeviceProbe *root_dev = NULL;
         const char *os_name = NULL;
         const char *os_id = NULL;
+        const char *keymap = NULL;
+        const char *font = NULL;
         autofree(char) *old_conf = NULL;
         autofree(char) *conf_path = NULL;
         autofree(char) *boot_dir = NULL;
@@ -346,6 +360,8 @@ static bool grub2_write_config(const BootManager *manager, const Kernel *default
 
         os_name = boot_manager_get_os_name((BootManager *)manager);
         os_id = boot_manager_get_os_id((BootManager *)manager);
+        keymap = boot_manager_get_vconsole((BootManager *)manager, "KEYMAP");
+        font = boot_manager_get_vconsole((BootManager *)manager, "FONT");
 
         /* Write out the stock header for our script */
         cbm_writer_append(writer, "#!/bin/bash\nset -e\n");
@@ -358,6 +374,8 @@ static bool grub2_write_config(const BootManager *manager, const Kernel *default
                 .boot_dir = boot_dir,
                 .os_name = os_name,
                 .os_id = os_id,
+                .vc_keymap = keymap,
+                .vc_font = font,
                 .is_separate = is_separate,
                 .submenu = false,
                 .manager = manager,

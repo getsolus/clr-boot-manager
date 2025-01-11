@@ -103,6 +103,8 @@ bool syslinux_common_set_default_kernel(const BootManager *manager, const Kernel
         NcHashmapIter iter = { 0 };
         char *initrd_name = NULL;
         char *ucode_initrd = NULL;
+        const char *vc_keymap = NULL;
+        const char *vc_font = NULL;
         int timeout;
         struct SyslinuxContext *ctx = NULL;
 
@@ -122,6 +124,8 @@ bool syslinux_common_set_default_kernel(const BootManager *manager, const Kernel
         }
 
         timeout = boot_manager_get_timeout_value((BootManager *)manager);
+        vc_keymap = boot_manager_get_vconsole((BootManager *)manager, "KEYMAP");
+        vc_font = boot_manager_get_vconsole((BootManager *)manager, "FONT");
 
         /* No default kernel for set timeout */
         if (!default_kernel) {
@@ -192,6 +196,13 @@ bool syslinux_common_set_default_kernel(const BootManager *manager, const Kernel
                 /* Add Btrfs information if relevant */
                 if (root_dev->btrfs_sub) {
                         cbm_writer_append_printf(writer, "rootflags=subvol=%s ", root_dev->btrfs_sub);
+                }
+                /* Add VC settings if configured */
+                if (vc_keymap) {
+                        cbm_writer_append_printf(writer, "rd.vconsole.keymap=%s ", vc_keymap);
+                }
+                if (vc_font) {
+                        cbm_writer_append_printf(writer, "rd.vconsole.font=%s ", vc_font);
                 }
 
                 /* Write out the cmdline */
