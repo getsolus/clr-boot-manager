@@ -2,6 +2,7 @@
  * This file is part of clr-boot-manager.
  *
  * Copyright © 2016-2018 Intel Corporation
+ * Copyright © 2024 Solus Project
  *
  * clr-boot-manager is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public License as
@@ -561,6 +562,19 @@ bool create_timeout_conf(void)
         timeout_conf = string_printf("%s/%s/timeout", PLAYGROUND_ROOT, KERNEL_CONF_DIRECTORY);
         if (!file_set_text((const char *)timeout_conf, (char *)"5")) {
                 fprintf(stderr, "Failed to touch: %s %s\n", timeout_conf, strerror(errno));
+                return false;
+        }
+        return true;
+}
+
+bool create_console_mode_conf(void)
+{
+        autofree(char) *console_mode_conf = NULL;
+
+        console_mode_conf =
+            string_printf("%s/%s/console_mode", PLAYGROUND_ROOT, KERNEL_CONF_DIRECTORY);
+        if (!file_set_text((const char *)console_mode_conf, (char *)"max")) {
+                fprintf(stderr, "Failed to touch: %s %s\n", console_mode_conf, strerror(errno));
                 return false;
         }
         return true;

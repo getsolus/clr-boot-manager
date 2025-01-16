@@ -2,6 +2,7 @@
  * This file is part of clr-boot-manager.
  *
  * Copyright © 2016-2018 Intel Corporation
+ * Copyright © 2024 Solus Project
  *
  * clr-boot-manager is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public License as
@@ -385,6 +386,9 @@ bool sd_class_set_default_kernel(const BootManager *manager, const Kernel *kerne
         }
 
         autofree(char) *item_name = NULL;
+        autofree(char) *console_mode = NULL;
+        autofree(char) *timeout_s = NULL;
+        autofree(char) *console_mode_s = NULL;
         int timeout = 0;
         const char *prefix = NULL;
         autofree(char) *old_conf = NULL;
@@ -403,22 +407,29 @@ bool sd_class_set_default_kernel(const BootManager *manager, const Kernel *kerne
         }
 
         timeout = boot_manager_get_timeout_value((BootManager *)manager);
+        console_mode = boot_manager_get_console_mode((BootManager *)manager);
 
+        /* Set the timeout as configured by the user */
         if (timeout > 0) {
-                /* Set the timeout as configured by the user */
-                item_name = string_printf("timeout %d\ndefault %s-%s-%s-%d.conf\n",
-                                          timeout,
-                                          prefix,
-                                          kernel->meta.ktype,
-                                          kernel->meta.version,
-                                          kernel->meta.release);
+                timeout_s = string_printf("timeout %d\n", timeout);
         } else {
-                item_name = string_printf("default %s-%s-%s-%d.conf\n",
-                                          prefix,
-                                          kernel->meta.ktype,
-                                          kernel->meta.version,
-                                          kernel->meta.release);
+                timeout_s = string_printf("");
         }
+
+        /* Set the console mode as configured by the user */
+        if (console_mode != NULL) {
+                console_mode_s = string_printf("console-mode %s\n", console_mode);
+        } else {
+                console_mode_s = string_printf("");
+        }
+
+        item_name = string_printf("default %s-%s-%s-%d.conf\n%s%s",
+                                  prefix,
+                                  kernel->meta.ktype,
+                                  kernel->meta.version,
+                                  kernel->meta.release,
+                                  timeout_s,
+                                  console_mode_s);
 
 write_config:
         if (file_get_text(sd_class_config.loader_config, &old_conf)) {
