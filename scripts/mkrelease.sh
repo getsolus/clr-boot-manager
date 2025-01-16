@@ -54,7 +54,7 @@ fi
 
 echo "${version}" > VERSION
 git commit -a -s -m "v${version} release"
-git tag "v${version}"
+git tag "solus-${version}"
 
 git submodule init
 git submodule update
