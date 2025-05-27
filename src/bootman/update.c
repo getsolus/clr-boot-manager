@@ -156,6 +156,7 @@ static bool boot_manager_update_native(BootManager *self)
         const char *kernel_type = NULL;
         KernelArray *typed_kernels = NULL;
         NcArray *removals = NULL;
+        NcArray *tips = nc_array_new();
         Kernel *new_default = NULL;
         const SystemKernel *system_kernel = NULL;
         bool ret = false;
@@ -245,16 +246,11 @@ static bool boot_manager_update_native(BootManager *self)
                                  tip->source.path);
                 }
 
-                /* Ensure this tip kernel is installed */
-                if (!boot_manager_install_kernel(self, tip)) {
-                        LOG_FATAL("Failed to install default-%s kernel: %s",
-                                  tip->meta.ktype,
-                                  tip->source.path);
+                /* Schedule installation of kernel */
+                if (!nc_array_add(tips, tip)) {
+                        DECLARE_OOM();
                         goto cleanup;
                 }
-                LOG_SUCCESS("update_native: Installed tip for %s: %s",
-                            kernel_type,
-                            tip->source.path);
 
                 /* Last known booting kernel, might be null. */
                 last_good = boot_manager_get_last_booted(self, typed_kernels);
@@ -317,6 +313,36 @@ static bool boot_manager_update_native(BootManager *self)
                 }
         }
 
+        /* Remove the older kernels first */
+        if (removals) {
+                for (uint16_t i = 0; i < removals->len; i++) {
+                        Kernel *k = nc_array_get(removals, i);
+                        LOG_INFO("update_native: Garbage collecting %s: %s",
+                                 k->meta.ktype,
+                                 k->source.path);
+                        if (!boot_manager_remove_kernel(self, k)) {
+                                LOG_ERROR("Failed to remove kernel: %s", k->source.path);
+                                ret = false;
+                                goto cleanup;
+                        }
+                }
+        }
+
+        /* Install newer kernels */
+        for (uint16_t i = 0; i < tips->len; i++) {
+                Kernel *tip = nc_array_get(tips, i);
+
+                if (!boot_manager_install_kernel(self, tip)) {
+                        LOG_FATAL("Failed to install default-%s kernel: %s",
+                                  tip->meta.ktype,
+                                  tip->source.path);
+                        goto cleanup;
+                }
+                LOG_SUCCESS("update_native: Installed tip for %s: %s",
+                            kernel_type,
+                            tip->source.path);
+        }
+
         /* Might return NULL */
         if (!running) {
                 /* Attempt to get it based on the current uname anyway */
@@ -348,23 +374,6 @@ static bool boot_manager_update_native(BootManager *self)
                 ret = true;
         }
 
-        if (!removals) {
-                /* We're done. */
-                LOG_DEBUG("No kernel removals found");
-                goto cleanup;
-        }
-
-        /* Now remove the older kernels */
-        for (uint16_t i = 0; i < removals->len; i++) {
-                Kernel *k = nc_array_get(removals, i);
-                LOG_INFO("update_native: Garbage collecting %s: %s", k->meta.ktype, k->source.path);
-                if (!boot_manager_remove_kernel(self, k)) {
-                        LOG_ERROR("Failed to remove kernel: %s", k->source.path);
-                        ret = false;
-                        goto cleanup;
-                }
-        }
-
 cleanup:
         if (!boot_manager_remove_initrd_freestanding(self)) {
                 ret = false;
@@ -372,6 +381,9 @@ cleanup:
         }
         if (removals) {
                 nc_array_free(&removals, NULL);
+        }
+        if (tips) {
+                nc_array_free(&tips, NULL);
         }
         return ret;
 }
