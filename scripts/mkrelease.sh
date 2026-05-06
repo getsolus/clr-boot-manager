@@ -60,7 +60,7 @@ git submodule init
 git submodule update
 
 ./scripts/git-archive-all.sh --format tar --prefix ${pkg}-${version}/ \
-			     --verbose -t "v${version}" ${pkg}-${version}.tar
+			     --verbose -t "solus-${version}" ${pkg}-${version}.tar
 
 xz -9 "${pkg}-${version}.tar"
 
